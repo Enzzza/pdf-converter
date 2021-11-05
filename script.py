@@ -1,10 +1,13 @@
 import sqlite3
 import hashlib
 import os
+import logging
 import boto3
+from botocore.exceptions import ClientError
+from dotenv import load_dotenv
+load_dotenv()
 
-s3 = boto3.client('s3')
-bucket_name = "bucket-name-here"
+bucket = os.environ.get("bucket")
 
 con = sqlite3.connect('data.db')
 cur = con.cursor()
@@ -63,11 +66,12 @@ def traverse_dirs():
     path = os.walk(".")
     for root, directories, files in path:
         for directory in directories:
-            d = os.path.join(root,directory)
-            dhash = hash_path(d)
-            is_added = get_folder(dhash)
-            if is_added is None:
-                add_folder(dhash,d)
+            if root.lower().find("git") == -1 and directory.lower().find("git") == -1 :
+                d = os.path.join(root,directory)
+                dhash = hash_path(d)
+                is_added = get_folder(dhash)
+                if is_added is None:
+                    add_folder(dhash,d)
                 
                 
         for file in files:
@@ -83,16 +87,57 @@ def hash_path(path):
     hash_object = hashlib.md5(path.encode())
     return hash_object.hexdigest()
 
+def upload_file(file_name, bucket, object_name=None):
+    """Upload a file to an S3 bucket
+
+    :param file_name: File to upload
+    :param bucket: Bucket to upload to
+    :param object_name: S3 object name. If not specified then file_name is used
+    :return: True if file was uploaded, else False
+    """
+
+    # If S3 object_name was not specified, use file_name
+    if object_name is None:
+        object_name = os.path.basename(file_name)
+
+    # Upload the file
+    s3_client = boto3.client('s3')
+    try:
+        response = s3_client.upload_file(file_name, bucket, object_name)
+    except ClientError as e:
+        logging.error(e)
+        return False
+    return True
+
+def add_folder_to_s3(folder_name, bucket):
+    """Add folder to an S3 bucket
+
+    :param folder_name: Folder to add
+    :param bucket: Bucket to add folder to
+    :return: True if file was uploaded, else False
+    """
+
+    # Add folder
+    s3_client = boto3.client('s3')
+    try:
+        response = s3_client.put_object(Bucket=bucket,Key=(folder_name+'/'))
+    except ClientError as e:
+        logging.error(e)
+        return False
+    return True
+        
+    
+    
 def add_folders_to_s3():
     folders = get_all_folders()
     for i in range(len(folders)):
-        #s3.put_object(Bucket=bucket_name, Key=(folders[i]+'/'))
-        print(folders[i])
+        add_folder_to_s3(folders[i],bucket)
 
 def add_files_to_s3():
     return
 
 def main():
+    
     create_tables()
     traverse_dirs()
     add_folders_to_s3()
