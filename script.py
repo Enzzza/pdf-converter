@@ -7,7 +7,14 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 load_dotenv()
 
-bucket = os.environ.get("bucket")
+bucket = os.environ.get("BUCKET")
+
+session = boto3.Session(
+    aws_access_key_id=os.environ.get("ACCESS_KEY"),
+    aws_secret_access_key=os.environ.get("SECRET_KEY"),
+)
+
+s3 = session.resource('s3')
 
 con = sqlite3.connect('data.db')
 cur = con.cursor()
@@ -101,9 +108,8 @@ def upload_file(file_name, bucket, object_name=None):
         object_name = os.path.basename(file_name)
 
     # Upload the file
-    s3_client = boto3.client('s3')
     try:
-        response = s3_client.upload_file(file_name, bucket, object_name)
+        response = s3.upload_file(file_name, bucket, object_name)
     except ClientError as e:
         logging.error(e)
         return False
@@ -116,11 +122,11 @@ def add_folder_to_s3(folder_name, bucket):
     :param bucket: Bucket to add folder to
     :return: True if file was uploaded, else False
     """
-
-    # Add folder
-    s3_client = boto3.client('s3')
+    folder_name = "name/ofyour/folders"
+    #f = os.path.normpath(folder_name+'/')
+    #Add folder
     try:
-        response = s3_client.put_object(Bucket=bucket,Key=(folder_name+'/'))
+        response = s3.put_object(Bucket=bucket,Key=(folder_name+'/'))
     except ClientError as e:
         logging.error(e)
         return False
@@ -131,7 +137,7 @@ def add_folder_to_s3(folder_name, bucket):
 def add_folders_to_s3():
     folders = get_all_folders()
     for i in range(len(folders)):
-        add_folder_to_s3(folders[i],bucket)
+        add_folder_to_s3(folders[i][1],bucket)
 
 def add_files_to_s3():
     return
@@ -147,3 +153,13 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
