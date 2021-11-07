@@ -3,12 +3,14 @@ import hashlib
 import os
 import logging
 from typing import NewType
+import uuid
 import boto3
 import tempfile
 from pathlib import Path
 import easyocr
-from pdf2image import convert_from_path, convert_from_bytes
-import PyPDF2
+from pdf2image.generators import uuid_generator
+import pdfplumber
+from pdf2image import convert_from_path
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 load_dotenv()
@@ -125,7 +127,7 @@ def upload_file(file_path, bucket, object_name=None):
     :return: True if file was uploaded, else False
     """
     f = file_path.replace(os.sep, '/')
-    #print(f)
+   
     # If S3 object_name was not specified, use file_path
 
     opath = os.path.split(object_name)[0]
@@ -133,7 +135,6 @@ def upload_file(file_path, bucket, object_name=None):
     object_name = os.path.join(opath,otxt)
     o = object_name.replace(os.sep, '/')
 
-    print(file_path)
     
     # Upload the file
     try:
@@ -160,6 +161,8 @@ def add_folder_to_s3(folder_name, bucket):
         logging.error(e)
         return False
     return True
+    
+    
         
     
 
@@ -172,48 +175,48 @@ def add_folders_to_s3():
 
 def add_files_to_s3():
     files = get_all_files()
-    for i in range(len(files)):
-        if convert_using_PyPDF2(files[i][1]):
+    for i in range(2):
+        if convert_using_PdfPlumber(files[i][1]):
             update_file_converted(files[i][0])
         else:
             if convert_using_EasyOCR(files[i][1]):
                 update_file_converted(files[i][0])
 
 
-def convert_using_PyPDF2(pdf):
-    print("Extracting text from computer generated PDF file.")
-    pdf_converted = True
+def convert_using_PdfPlumber(pdf):
+    print("Extracting text using pdfplubmer")
+
     with tempfile.TemporaryDirectory() as path:
-        pdfb = open(pdf, mode='rb')
-        pdfdoc = PyPDF2.PdfFileReader(pdfb)
-        file_name = Path(pdf).stem + '.txt'
-        file_path = os.path.join(path,file_name)
-        for i in range(pdfdoc.numPages):
-            current_page = pdfdoc.getPage(i)
-            try:
-                with open(file_path, "a") as file_object:
-                    file_object.write(current_page.extractText())
-            except UnicodeEncodeError:
-                pdf_converted = False
+        with pdfplumber.open(pdf) as pdfp:
+            file_name = Path(pdf).stem + '.txt'
+            file_path = os.path.join(path,file_name)
             
-        if pdf_converted:
+            for i in range(len(pdfp.pages)):
+                page = pdfp.pages[i]
+                text = page.extract_text()
+                if text is None:
+                    return False
+                
+                with open(file_path, "a", encoding="utf-8") as file_object:
+                    file_object.write(text)
+            
             return upload_file(file_path,bucket,pdf)
     
         
-    return False
-        
 def convert_using_EasyOCR(pdf):
-    print("Extracting text from scanned PDF file using OCR.")
+    print("Extracting text using EasyOCR")
     text_array = []
     with tempfile.TemporaryDirectory() as path:
         images_from_path = convert_from_path(pdf,500,output_folder=path)
         for image_counter,image in enumerate(images_from_path):
             image_name = "page_"+str(image_counter)+".jpg"
-            image.save(image_name,'JPEG')
-            result = reader.readtext(image_name,detail = 0, paragraph=True)
+            image_path = os.path.join(path,image_name)
+            image.save(image_path,'JPEG')
+            result = reader.readtext(image_path,detail = 0, paragraph=True)
             text_array.extend(result)
         text_string = " ".join(text_array)
         file_name = Path(pdf).stem + '.txt'
+       
         file_path = os.path.join(path,file_name)
         with open(file_path, 'w',encoding="utf-8") as f:
             f.write(text_string)
