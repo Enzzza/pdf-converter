@@ -175,7 +175,7 @@ def add_folders_to_s3():
 
 def add_files_to_s3():
     files = get_all_files()
-    for i in range(2):
+    for i in range(len(files)):
         if convert_using_PdfPlumber(files[i][1]):
             update_file_converted(files[i][0])
         else:
